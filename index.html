@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>SonoKnee — US-Guided Knee Injection Trainer</title>
+<style>
+  :root{
+    --bg:#0b1220;          /* deep clinical navy */
+    --panel:#101a2e;
+    --ink:#e8eef7;
+    --muted:#8fa3c0;
+    --line:#22324d;
+    --probe:#f2b705;        /* transducer amber */
+    --needle:#c9d4e3;
+    --target:#3ddc97;       /* recess green */
+    --danger:#ff6b6b;       /* quad tendon / bad path */
+    --scan:#7fe3ff;
+    --accent:#4f9cff;
+    --mono:"SF Mono",ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow:hidden}
+
+  /* ---------- Desktop / preview shell ---------- */
+  #shell{position:fixed;inset:0;display:grid;grid-template-columns:340px 1fr;grid-template-rows:1fr;}
+  #side{background:linear-gradient(180deg,var(--panel),#0c1526);border-right:1px solid var(--line);
+    padding:22px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:18px}
+  .brand{display:flex;align-items:baseline;gap:10px}
+  .brand h1{font-size:22px;letter-spacing:-.02em;margin:0;font-weight:650}
+  .brand h1 span{color:var(--probe)}
+  .brand .v{font:600 10px/1 var(--mono);color:var(--muted);border:1px solid var(--line);
+    padding:3px 6px;border-radius:5px}
+  .lede{color:var(--muted);font-size:13px;line-height:1.5;margin:-6px 0 0}
+
+  .card{background:#0c1526;border:1px solid var(--line);border-radius:12px;padding:14px 15px}
+  .card h2{margin:0 0 9px;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:650}
+  .step{display:flex;gap:10px;font-size:13px;line-height:1.45;margin:8px 0}
+  .step b{color:var(--scan)}
+  .num{flex:0 0 20px;height:20px;border-radius:50%;background:#132446;color:var(--scan);
+    font:600 11px/20px var(--mono);text-align:center}
+
+  .cta{margin-top:2px}
+  button.enter{width:100%;border:0;border-radius:11px;padding:15px;font-size:15px;font-weight:650;
+    color:#08111f;background:linear-gradient(135deg,#7fe3ff,#4f9cff);cursor:pointer;letter-spacing:.01em}
+  button.enter:disabled{filter:grayscale(.7) brightness(.7);cursor:not-allowed}
+  .hint{font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5}
+
+  .cite{font-size:11px;color:var(--muted);line-height:1.55}
+  .cite a{color:var(--accent);text-decoration:none}
+  .cite a:hover{text-decoration:underline}
+
+  #stage{position:relative}
+  #overlay{position:absolute;left:18px;bottom:18px;z-index:5;display:flex;gap:10px;flex-wrap:wrap;max-width:60%}
+  .pill{background:rgba(12,21,38,.82);backdrop-filter:blur(8px);border:1px solid var(--line);
+    border-radius:9px;padding:8px 11px;font:600 12px/1 var(--mono);color:var(--muted)}
+  .pill b{color:var(--ink)}
+  canvas{display:block}
+
+  /* 2D ultrasound HUD shown in preview (mirrors the in-VR sono screen) */
+  #sono{position:absolute;right:18px;top:18px;width:230px;z-index:5;
+    background:#000;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  #sono .bar{display:flex;justify-content:space-between;align-items:center;
+    padding:5px 8px;background:#06101f;font:600 10px/1 var(--mono);color:var(--scan)}
+  #sono canvas{width:230px;height:172px;background:#000}
+
+  @media (max-width:820px){
+    #shell{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    #side{border-right:0;border-bottom:1px solid var(--line);max-height:46vh}
+    #sono{width:150px}#sono canvas{width:150px;height:112px}
+    #overlay{max-width:90%}
+  }
+  .kbd{font:600 11px/1 var(--mono);background:#132446;border:1px solid var(--line);
+    border-radius:5px;padding:3px 6px;color:var(--ink)}
+</style>
+</head>
+<body>
+<div id="shell">
+  <aside id="side">
+    <div class="brand">
+      <h1>Sono<span>Knee</span></h1>
+      <span class="v">v1.0 · WebXR</span>
+    </div>
+    <p class="lede">A hands-on VR trainer for the ultrasound-guided intra-articular knee injection, built for family medicine residents. Uses the lateral suprapatellar recess approach with an in-plane needle.</p>
+
+    <div class="card">
+      <h2>The task</h2>
+      <div class="step"><span class="num">1</span><div>Hold the <b>transducer</b> (left controller) transversely, just above the patella, to find the suprapatellar recess.</div></div>
+      <div class="step"><span class="num">2</span><div>Watch the live <b>sono screen</b> — the dark recess sits between the quadriceps and prefemoral fat pads.</div></div>
+      <div class="step"><span class="num">3</span><div>Advance the <b>needle</b> (right controller) <b>lateral&nbsp;→&nbsp;medial, in-plane</b>, keeping the tip on screen.</div></div>
+      <div class="step"><span class="num">4</span><div>Pull the <b>trigger</b> to inject once the tip is seated in the recess. Avoid the quadriceps tendon.</div></div>
+    </div>
+
+    <div class="cta">
+      <button class="enter" id="enterVR">Enter VR</button>
+      <button class="enter" id="tryDesktop" style="margin-top:9px;background:#152342;color:var(--ink)">Preview in browser</button>
+      <p class="hint" id="xrStatus">Checking headset…</p>
+      <p class="hint">Desktop preview: drag to orbit · <span class="kbd">←→</span> move probe · <span class="kbd">Space</span> advance needle · <span class="kbd">Enter</span> inject.</p>
+    </div>
+
+    <div class="card">
+      <h2>Why this approach</h2>
+      <p class="cite">Ultrasound guidance raises intra-articular knee injection accuracy to ~95% vs ~82% for landmark technique (13-study systematic review, <em>Am J Phys Med Rehabil</em>, 2025).<sup>1</sup> The lateral suprapatellar recess, in-plane, lateral-to-medial route reached the joint on the first pass in 94% of cases and avoids the quadriceps tendon.<sup>2,3</sup></p>
+    </div>
+
+    <div class="card">
+      <h2>References</h2>
+      <p class="cite">
+        1. Kasitinon D, et al. Accuracy and Efficacy of Intra-Articular Knee Injections/Aspirations Under Ultrasound versus Landmark Guidance: A Systematic Review. <em>Am J Phys Med Rehabil.</em> 2025. <a href="https://journals.lww.com/ajpmr/abstract/9900/accuracy_and_efficacy_of_intra_articular_knee.762.aspx" target="_blank" rel="noopener">Link</a><br><br>
+        2. Chavez-Chiang C, et al. In-Plane Ultrasound-Guided Knee Injection Through a Lateral Suprapatellar Approach: A Safe Technique. <em>Ultrasound Q.</em> 2017;33(2):139-142. <a href="https://pubmed.ncbi.nlm.nih.gov/28481763/" target="_blank" rel="noopener">Link</a><br><br>
+        3. Fang WH, Chen XT, Vangsness CT. Ultrasound-Guided Knee Injections Are More Accurate Than Blind Injections: A Systematic Review of RCTs. <em>Arthrosc Sports Med Rehabil.</em> 2021;3(4):e1177-e1187. <a href="https://www.arthroscopysportsmedicineandrehabilitation.org/article/S2666-061X(21)00037-7/fulltext" target="_blank" rel="noopener">Link</a>
+      </p>
+    </div>
+  </aside>
+
+  <main id="stage">
+    <div id="sono">
+      <div class="bar"><span>LINEAR 12MHz · TRV</span><span id="sonoState">SCANNING</span></div>
+      <canvas id="sonoCanvas" width="460" height="344"></canvas>
+    </div>
+    <div id="overlay">
+      <div class="pill">RECESS <b id="mRecess">—</b></div>
+      <div class="pill">IN-PLANE <b id="mPlane">—</b></div>
+      <div class="pill">PATH <b id="mPath">—</b></div>
+      <div class="pill">SCORE <b id="mScore">0</b></div>
+    </div>
+  </main>
+</div>
+
+<!-- Import map: resolves the bare "three" specifier that the add-on modules import internally.
+     Without this, the browser throws "Failed to resolve module specifier 'three'". All three.js
+     imports are pinned to one version + one CDN so the core and examples never mismatch. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { VRButton } from "three/addons/webxr/VRButton.js";
+import { XRControllerModelFactory } from "three/addons/webxr/XRControllerModelFactory.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+/* ------------------------------------------------------------------ *
+ *  SonoKnee — WebXR US-guided knee injection trainer
+ *  - Knee phantom (femur, patella, quad tendon, fat pads, recess)
+ *  - Handheld ultrasound transducer -> defines an imaging plane
+ *  - Needle on the other controller
+ *  - Live B-mode image synthesized from probe pose + needle
+ *  - Scoring: recess hit, in-plane discipline, tendon avoidance
+ * ------------------------------------------------------------------ */
+
+const CSS = getComputedStyle(document.documentElement);
+const col = n => new THREE.Color(CSS.getPropertyValue(n).trim());
+const C = {
+  bg:col('--bg'), probe:col('--probe'), needle:col('--needle'),
+  target:col('--target'), danger:col('--danger'), scan:col('--scan'),
+  accent:col('--accent'), skin:new THREE.Color('#d9a98c'),
+  bone:new THREE.Color('#eef1f5'), fat:new THREE.Color('#c8b48a'),
+  tendon:new THREE.Color('#b7c2d0')
+};
+
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.xr.enabled = true;
+const stage = document.getElementById('stage');
+function sizeRenderer(){
+  const r = stage.getBoundingClientRect();
+  renderer.setSize(r.width, r.height, false);
+  camera.aspect = r.width/r.height; camera.updateProjectionMatrix();
+}
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = C.bg.clone();
+scene.fog = new THREE.Fog(C.bg.clone(), 3.5, 9);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 50);
+camera.position.set(0.0, 1.55, 0.85);
+
+/* ---- lighting ---- */
+scene.add(new THREE.HemisphereLight(0xaecbff, 0x0a0f1a, 0.8));
+const key = new THREE.DirectionalLight(0xffffff, 1.1);
+key.position.set(1.5, 3, 2); key.castShadow = true;
+key.shadow.mapSize.set(1024,1024); key.shadow.camera.near=0.5; key.shadow.camera.far=8;
+scene.add(key);
+
+/* ---- room / table ---- */
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(6, 48),
+  new THREE.MeshStandardMaterial({color:0x0a1120, roughness:1, metalness:0}));
+floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+
+const grid = new THREE.GridHelper(6, 24, 0x1c2c47, 0x14203a);
+grid.position.y = 0.001; scene.add(grid);
+
+const table = new THREE.Mesh(
+  new THREE.BoxGeometry(1.4,0.05,0.7),
+  new THREE.MeshStandardMaterial({color:0x16233d, roughness:.85}));
+table.position.set(0,1.0,0); table.castShadow=table.receiveShadow=true; scene.add(table);
+
+/* =========================================================
+ *  KNEE PHANTOM
+ *  Local frame centered on table top. Anatomy laid out so that
+ *  +x = lateral, -x = medial, +z = anterior(toward operator), +y = up.
+ *  Sagittal-ish leg lies along z; the injection zone is just
+ *  superior (−z, proximal) to the patella.
+ * ========================================================= */
+const knee = new THREE.Group();
+knee.position.set(0, 1.05, 0);
+scene.add(knee);
+
+// A soft translucent "skin" leg so it reads as a human knee model.
+const legMat = new THREE.MeshStandardMaterial({
+  color:C.skin, roughness:.85, transparent:true, opacity:.24,
+  depthWrite:false, side:THREE.DoubleSide});
+const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.075,0.30,8,20), legMat.clone());
+thigh.rotation.x = Math.PI/2; thigh.position.set(0,0.02,-0.20); knee.add(thigh);
+const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.062,0.28,8,20), legMat.clone());
+shin.rotation.x = Math.PI/2; shin.position.set(0,0.0,0.24); knee.add(shin);
+
+// Femur (bone) — bright hyperechoic on US
+const femur = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.045,0.05,0.34,20),
+  new THREE.MeshStandardMaterial({color:C.bone, roughness:.5}));
+femur.rotation.x = Math.PI/2; femur.position.set(0,-0.01,-0.16); femur.castShadow=true; knee.add(femur);
+
+// Patella
+const patella = new THREE.Mesh(
+  new THREE.SphereGeometry(0.038,20,16),
+  new THREE.MeshStandardMaterial({color:C.bone, roughness:.5}));
+patella.scale.set(1,0.7,0.6); patella.position.set(0,0.03,0.06); patella.castShadow=true; knee.add(patella);
+
+// Quadriceps tendon — the structure to AVOID (runs proximal, superficial-anterior)
+const tendon = new THREE.Mesh(
+  new THREE.BoxGeometry(0.05,0.018,0.16),
+  new THREE.MeshStandardMaterial({color:C.tendon, roughness:.7}));
+tendon.position.set(0,0.055,-0.10); knee.add(tendon);
+
+// Suprapatellar recess TARGET — small volume between fat pads, just proximal to patella
+const RECESS = new THREE.Vector3(0.0, 0.012, -0.045); // local, mid-line
+const recessR = 0.018;
+const recessViz = new THREE.Mesh(
+  new THREE.SphereGeometry(recessR,18,14),
+  new THREE.MeshStandardMaterial({color:C.target, emissive:C.target,
+    emissiveIntensity:.35, transparent:true, opacity:.5}));
+recessViz.position.copy(RECESS); knee.add(recessViz);
+
+// Lateral entry marker (skin) — where the needle SHOULD enter
+const LAT_ENTRY = new THREE.Vector3(0.085,0.05,-0.045);
+const entryMark = new THREE.Mesh(
+  new THREE.RingGeometry(0.006,0.011,20),
+  new THREE.MeshBasicMaterial({color:C.target, side:THREE.DoubleSide}));
+entryMark.position.copy(LAT_ENTRY); entryMark.lookAt(LAT_ENTRY.clone().add(new THREE.Vector3(1,0.2,0)));
+knee.add(entryMark);
+
+// world-space helpers
+const recessWorld = ()=> knee.localToWorld(RECESS.clone());
+const tendonBox = new THREE.Box3();
+function updateTendonBox(){ tendonBox.setFromObject(tendon); }
+
+/* =========================================================
+ *  TRANSDUCER  (left controller / desktop-driven)
+ *  Defines an imaging plane: origin at footprint, +normal into tissue.
+ * ========================================================= */
+const probe = new THREE.Group();
+const probeBody = new THREE.Mesh(
+  new THREE.BoxGeometry(0.05,0.03,0.11),
+  new THREE.MeshStandardMaterial({color:0x1a2740, roughness:.6}));
+const probeFace = new THREE.Mesh(
+  new THREE.BoxGeometry(0.052,0.008,0.045),
+  new THREE.MeshStandardMaterial({color:C.probe, emissive:C.probe, emissiveIntensity:.4}));
+probeFace.position.set(0,-0.018,0);
+const probeGrip = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.014,0.016,0.09,16),
+  new THREE.MeshStandardMaterial({color:0x0f1830, roughness:.5}));
+probeGrip.position.set(0,0.05,0.02); probeGrip.rotation.x=0.3;
+probe.add(probeBody,probeFace,probeGrip);
+scene.add(probe);
+
+// Visible imaging fan projected from the probe footprint
+const FAN_DEPTH = 0.14, FAN_W = 0.055;
+const fanGeo = new THREE.PlaneGeometry(FAN_W, FAN_DEPTH);
+const fanMat = new THREE.MeshBasicMaterial({color:C.scan, transparent:true,
+  opacity:.16, side:THREE.DoubleSide, depthWrite:false});
+const fan = new THREE.Mesh(fanGeo, fanMat);
+scene.add(fan);
+// beam center line
+const beamMat = new THREE.LineBasicMaterial({color:C.scan, transparent:true, opacity:.5});
+const beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+  [new THREE.Vector3(),new THREE.Vector3()]), beamMat);
+scene.add(beam);
+
+/* probe pose in world: origin = footprint, dir = into tissue (down) */
+const probeState = {
+  origin:new THREE.Vector3(), normal:new THREE.Vector3(0,-1,0),
+  inPlaneAxis:new THREE.Vector3(1,0,0) // lateral-medial, the in-plane needle axis
+};
+function updateProbePlane(){
+  // footprint = bottom face of probe
+  probe.updateMatrixWorld();
+  probeState.origin.setFromMatrixPosition(probeFace.matrixWorld);
+  // beam goes along probe local -Y
+  probeState.normal.set(0,-1,0).applyQuaternion(probe.quaternion).normalize();
+  // in-plane axis = probe local +X (short-axis of leg = lateral/medial)
+  probeState.inPlaneAxis.set(1,0,0).applyQuaternion(probe.quaternion).normalize();
+
+  // place fan mesh: it lies in plane spanned by normal(down) & inPlaneAxis(x)
+  const mid = probeState.origin.clone().addScaledVector(probeState.normal, FAN_DEPTH/2);
+  fan.position.copy(mid);
+  const m = new THREE.Matrix4();
+  const yAxis = probeState.normal.clone().negate();            // plane 'up' = toward probe
+  const xAxis = probeState.inPlaneAxis.clone();
+  const zAxis = new THREE.Vector3().crossVectors(xAxis,yAxis).normalize();
+  m.makeBasis(xAxis,yAxis,zAxis);
+  fan.quaternion.setFromRotationMatrix(m);
+
+  const p0 = probeState.origin.clone();
+  const p1 = probeState.origin.clone().addScaledVector(probeState.normal, FAN_DEPTH);
+  beam.geometry.setFromPoints([p0,p1]);
+}
+
+/* =========================================================
+ *  NEEDLE  (right controller / desktop-driven)
+ * ========================================================= */
+const needle = new THREE.Group();
+const shaft = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.0016,0.0016,0.14,10),
+  new THREE.MeshStandardMaterial({color:C.needle, metalness:.9, roughness:.25}));
+shaft.rotation.z = Math.PI/2;           // lie along local +X (bevel points +X)
+shaft.position.x = -0.07;               // so tip is at needle-group origin (+X end)
+const hub = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.008,0.01,0.02,12),
+  new THREE.MeshStandardMaterial({color:C.accent, roughness:.5}));
+hub.rotation.z = Math.PI/2; hub.position.x=-0.15;
+needle.add(shaft,hub);
+scene.add(needle);
+const needleTipWorld = new THREE.Vector3();
+const needleDirWorld = new THREE.Vector3();
+function updateNeedle(){
+  needle.updateMatrixWorld();
+  needleTipWorld.setFromMatrixPosition(needle.matrixWorld); // origin == tip
+  needleDirWorld.set(1,0,0).applyQuaternion(needle.quaternion).normalize();
+}
+
+/* =========================================================
+ *  CONTROLLERS
+ * ========================================================= */
+const factory = new XRControllerModelFactory();
+let handProbe=null, handNeedle=null, injecting=false;
+function buildController(i){
+  const c = renderer.xr.getController(i);
+  scene.add(c);
+  const g = renderer.xr.getControllerGrip(i);
+  g.add(factory.createControllerModel(g)); scene.add(g);
+  return c;
+}
+function onSessionStart(){
+  // left = probe, right = needle (fallback to index order)
+  const c0 = buildController(0), c1 = buildController(1);
+  handProbe = c0; handNeedle = c1;
+  handProbe.addEventListener('connected', e=>{ if(e.data && e.data.handedness==='right'){ swapHands(); }});
+  handNeedle.addEventListener('selectstart', ()=> injecting=true);
+  handNeedle.addEventListener('selectend',   ()=> injecting=false);
+  // attach visuals
+  probe.position.set(0,0,0); handProbe.add(probe);
+  needle.position.set(0,0,0); handNeedle.add(needle);
+  // orient held tools comfortably
+  probe.rotation.set(Math.PI*0.5,0,0);   // face pointing away from palm-down grip
+  needle.rotation.set(0,-Math.PI*0.5,0); // tip forward
+  resetScore();
+}
+function swapHands(){ const t=handProbe; handProbe=handNeedle; handNeedle=t;
+  handProbe.add(probe); handNeedle.add(needle); }
+
+renderer.xr.addEventListener('sessionstart', onSessionStart);
+renderer.xr.addEventListener('sessionend', ()=>{
+  // return tools to desktop rig
+  scene.add(probe); scene.add(needle);
+});
+
+/* =========================================================
+ *  SCORING
+ * ========================================================= */
+const M = {recess:document.getElementById('mRecess'),plane:document.getElementById('mPlane'),
+  path:document.getElementById('mPath'),score:document.getElementById('mScore'),
+  sonoState:document.getElementById('sonoState')};
+let score=0, lastInjectOk=false, feedbackT=0, feedbackMsg="", feedbackColor="#8fa3c0";
+function resetScore(){ score=0; M.score.textContent='0'; }
+
+const feedbackSprite = makeFeedbackPanel();
+scene.add(feedbackSprite);
+function makeFeedbackPanel(){
+  const cv=document.createElement('canvas'); cv.width=512; cv.height=128;
+  const tx=new THREE.CanvasTexture(cv);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tx,transparent:true,depthTest:false}));
+  sp.scale.set(0.28,0.07,1); sp.visible=false; sp.userData={cv,tx};
+  return sp;
+}
+function flash(msg,color){
+  feedbackMsg=msg; feedbackColor=color; feedbackT=2.2;
+  const {cv,tx}=feedbackSprite.userData, x=cv.getContext('2d');
+  x.clearRect(0,0,512,128);
+  x.fillStyle='rgba(8,14,26,.85)'; roundRect(x,4,30,504,68,14); x.fill();
+  x.strokeStyle=color; x.lineWidth=2; roundRect(x,4,30,504,68,14); x.stroke();
+  x.fillStyle=color; x.font='600 34px ui-sans-serif,Segoe UI,Arial'; x.textAlign='center';
+  x.textBaseline='middle'; x.fillText(msg,256,64); tx.needsUpdate=true;
+  feedbackSprite.visible=true;
+}
+function roundRect(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
+
+/* distance from point to the imaging plane (for "is needle in-plane") */
+function distToPlane(p){
+  const zAxis = new THREE.Vector3().crossVectors(probeState.inPlaneAxis, probeState.normal).normalize();
+  return Math.abs(p.clone().sub(probeState.origin).dot(zAxis));
+}
+/* signed lateral position along in-plane axis (to confirm lateral->medial travel) */
+function lateralPos(p){ return p.clone().sub(probeState.origin).dot(probeState.inPlaneAxis); }
+
+let metrics={recessSeen:false,inPlane:false,pathOk:false};
+function evaluate(dt){
+  updateProbePlane(); updateNeedle(); updateTendonBox();
+  const rc = recessWorld();
+
+  // 1) Is the recess within the imaging plane/fan? (probe correctly placed)
+  const recessPlaneDist = distToPlane(rc);
+  const recessDepth = rc.clone().sub(probeState.origin).dot(probeState.normal);
+  metrics.recessSeen = recessPlaneDist < 0.02 && recessDepth>0.01 && recessDepth<FAN_DEPTH
+      && Math.abs(lateralPos(rc)) < FAN_W*0.7;
+
+  // 2) Needle in-plane (visible on screen) + traveling lateral->medial
+  const tipPlaneDist = distToPlane(needleTipWorld);
+  const travellingMedial = needleDirWorld.dot(probeState.inPlaneAxis) < -0.25; // pointing -x (medial)
+  metrics.inPlane = tipPlaneDist < 0.018 && travellingMedial;
+
+  // 3) Path safety: not piercing quad tendon
+  const hitsTendon = tendonBox.distanceToPoint(needleTipWorld) < 0.006;
+  metrics.pathOk = !hitsTendon;
+
+  // recess viz feedback
+  recessViz.material.emissiveIntensity = metrics.recessSeen ? 0.9 : 0.3;
+  recessViz.material.color.copy(metrics.recessSeen?C.target:C.scan);
+
+  M.recess.textContent = metrics.recessSeen?'IN VIEW':'—';
+  M.plane.textContent  = metrics.inPlane?'ON':'OFF';
+  M.path.textContent   = hitsTendon?'TENDON!':'clear';
+  M.path.parentElement.style.borderColor = hitsTendon? getComputedStyle(document.documentElement).getPropertyValue('--danger'):'';
+
+  // Injection attempt
+  const tipToRecess = needleTipWorld.distanceTo(rc);
+  const seated = tipToRecess < recessR*1.1;
+  M.sonoState.textContent = injecting ? (seated?'INJECTING':'MISS') : (metrics.recessSeen?'RECESS':'SCANNING');
+
+  if(injecting && !lastInjectOk){
+    if(seated && metrics.recessSeen && metrics.inPlane && metrics.pathOk){
+      score += 100; flash('✓ Intra-articular — good injection', getComputedStyle(document.documentElement).getPropertyValue('--target').trim());
+      pulse(recessViz);
+    } else if(hitsTendon){
+      score = Math.max(0,score-25); flash('✗ Quadriceps tendon — reposition lateral', getComputedStyle(document.documentElement).getPropertyValue('--danger').trim());
+    } else if(!metrics.recessSeen){
+      flash('Probe off target — find the recess first', '#f2b705');
+    } else if(!metrics.inPlane){
+      flash('Keep needle in-plane, lateral → medial', '#f2b705');
+    } else {
+      flash('Tip not seated — advance to the recess', '#f2b705');
+    }
+    M.score.textContent=score;
+    lastInjectOk=true;
+  }
+  if(!injecting) lastInjectOk=false;
+
+  // feedback panel placement + fade
+  if(feedbackT>0){
+    feedbackT-=dt;
+    feedbackSprite.position.copy(rc).add(new THREE.Vector3(0,0.10,0));
+    feedbackSprite.material.opacity = Math.min(1,feedbackT);
+    if(feedbackT<=0) feedbackSprite.visible=false;
+  }
+}
+let pulseT=0,pulseObj=null;
+function pulse(o){pulseObj=o;pulseT=0.5;}
+
+/* =========================================================
+ *  SYNTHETIC B-MODE ULTRASOUND  (2D canvas -> also a texture in VR)
+ *  Renders anatomy as it intersects the probe's imaging plane, plus
+ *  the needle if it lies within the plane. Depth = down the beam.
+ * ========================================================= */
+const sonoCv = document.getElementById('sonoCanvas');
+const sctx = sonoCv.getContext('2d');
+const SW=sonoCv.width, SH=sonoCv.height;
+
+// VR-facing sono screen (a floating monitor) with same texture
+const sonoTex = new THREE.CanvasTexture(sonoCv);
+const monitor = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.34,0.255),
+  new THREE.MeshBasicMaterial({map:sonoTex}));
+const monitorFrame = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.37,0.30),
+  new THREE.MeshBasicMaterial({color:0x0a1424}));
+const monitorGrp = new THREE.Group();
+monitorFrame.position.z=-0.002; monitorGrp.add(monitorFrame,monitor);
+monitorGrp.position.set(0.55,1.45,-0.15); monitorGrp.rotation.y=-0.5;
+scene.add(monitorGrp);
+// simple stand
+const stand=new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.01,0.45,10),
+  new THREE.MeshStandardMaterial({color:0x14203a}));
+stand.position.set(0.55,1.225,-0.15); scene.add(stand);
+
+// project a world point into sono image coords (or null if outside plane/fan)
+const _z=new THREE.Vector3();
+function projectToSono(p){
+  _z.crossVectors(probeState.inPlaneAxis, probeState.normal).normalize();
+  const rel = p.clone().sub(probeState.origin);
+  const off = rel.dot(_z);                 // out-of-plane distance
+  const lat = rel.dot(probeState.inPlaneAxis); // -W..+W
+  const dep = rel.dot(probeState.normal);      // 0..FAN_DEPTH
+  if(Math.abs(off) > 0.02) return null;
+  const u = (lat/ (FAN_W/2))*0.5 + 0.5;
+  const v = dep/FAN_DEPTH;
+  if(u<-0.1||u>1.1||v<-0.05||v>1.1) return {x:u*SW,y:v*SH,off,out:true};
+  return {x:u*SW,y:v*SH,off,out:false};
+}
+
+function drawSono(){
+  // speckle background
+  const img = sctx.getImageData(0,0,SW,SH);
+  // cheap moving speckle
+  for(let i=0;i<img.data.length;i+=4){
+    const n = 18 + Math.random()*26;
+    img.data[i]=n*0.55; img.data[i+1]=n*0.8; img.data[i+2]=n; img.data[i+3]=255;
+  }
+  sctx.putImageData(img,0,0);
+
+  // vignette / sector edges
+  sctx.fillStyle='rgba(0,0,0,.55)';
+  sctx.beginPath(); sctx.moveTo(0,0); sctx.lineTo(SW*0.12,SH); sctx.lineTo(0,SH); sctx.closePath(); sctx.fill();
+  sctx.beginPath(); sctx.moveTo(SW,0); sctx.lineTo(SW*0.88,SH); sctx.lineTo(SW,SH); sctx.closePath(); sctx.fill();
+
+  const rc = recessWorld();
+
+  // --- FEMUR: bright cortical line + posterior shadow ---
+  const femW = knee.localToWorld(new THREE.Vector3(-0.05,-0.01,-0.16));
+  const femE = knee.localToWorld(new THREE.Vector3( 0.05,-0.01,-0.16));
+  const a=projectToSono(femW), b=projectToSono(femE);
+  if(a&&b){
+    sctx.strokeStyle='rgba(240,244,250,.95)'; sctx.lineWidth=6; sctx.lineCap='round';
+    sctx.beginPath(); sctx.moveTo(a.x,a.y+40); sctx.lineTo(b.x,b.y+40); sctx.stroke();
+    // acoustic shadow beneath bone
+    const g=sctx.createLinearGradient(0,SH*0.6,0,SH);
+    g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.7)');
+    sctx.fillStyle=g; sctx.fillRect(Math.min(a.x,b.x),SH*0.55,Math.abs(b.x-a.x)+20,SH);
+  }
+
+  // --- FAT PADS (mid-gray) framing the recess ---
+  const pr = projectToSono(rc);
+  if(pr && !pr.out){
+    // quad/suprapatellar fat pad above, prefemoral below → recess is the dark slit between
+    sctx.fillStyle='rgba(150,140,110,.5)';
+    sctx.beginPath(); sctx.ellipse(pr.x,pr.y-26,70,20,0,0,7); sctx.fill();
+    sctx.beginPath(); sctx.ellipse(pr.x,pr.y+24,74,18,0,0,7); sctx.fill();
+    // RECESS: hypoechoic (dark) target between them
+    sctx.fillStyle='rgba(4,8,14,.92)';
+    sctx.beginPath(); sctx.ellipse(pr.x,pr.y,46,11,0,0,7); sctx.fill();
+    sctx.strokeStyle= metrics.recessSeen?'rgba(61,220,151,.9)':'rgba(127,227,255,.5)';
+    sctx.lineWidth=1.5; sctx.beginPath(); sctx.ellipse(pr.x,pr.y,46,11,0,0,7); sctx.stroke();
+    if(metrics.recessSeen){
+      sctx.fillStyle='rgba(61,220,151,.9)';sctx.font='600 13px monospace';sctx.textAlign='center';
+      sctx.fillText('SUPRAPATELLAR RECESS',pr.x,pr.y-46);
+    }
+  }
+
+  // --- QUAD TENDON (fibrillar) as a caution band, superficial-proximal ---
+  const tp = projectToSono(knee.localToWorld(new THREE.Vector3(0,0.055,-0.10)));
+  if(tp && !tp.out){
+    sctx.strokeStyle='rgba(200,150,150,.5)'; sctx.lineWidth=2;
+    for(let k=-3;k<=3;k++){ sctx.beginPath();
+      sctx.moveTo(tp.x-55,tp.y+k*3); sctx.lineTo(tp.x+55,tp.y+k*3); sctx.stroke(); }
+  }
+
+  // --- NEEDLE: only if within plane; bright echo + reverberation ---
+  const nt=projectToSono(needleTipWorld);
+  const nb=projectToSono(needleTipWorld.clone().addScaledVector(needleDirWorld,-0.13));
+  if(nt&&nb&&Math.abs(nt.off)<0.018){
+    sctx.strokeStyle='rgba(255,255,255,.98)'; sctx.lineWidth=3; sctx.lineCap='round';
+    sctx.beginPath(); sctx.moveTo(nb.x,nb.y); sctx.lineTo(nt.x,nt.y); sctx.stroke();
+    // bright tip
+    sctx.fillStyle='#fff'; sctx.beginPath(); sctx.arc(nt.x,nt.y,3.5,0,7); sctx.fill();
+    // reverberation artifact under shaft
+    sctx.strokeStyle='rgba(255,255,255,.25)'; sctx.lineWidth=1;
+    for(let r=1;r<=3;r++){ sctx.beginPath();
+      sctx.moveTo(nb.x,nb.y+r*5); sctx.lineTo(nt.x,nt.y+r*5); sctx.stroke(); }
+    // injecting spread
+    if(injecting){
+      sctx.fillStyle='rgba(30,40,60,.6)';
+      sctx.beginPath(); sctx.arc(nt.x,nt.y,10+6*Math.sin(performance.now()/120),0,7); sctx.fill();
+    }
+  }
+
+  // reticle + labels
+  sctx.strokeStyle='rgba(127,227,255,.25)';sctx.lineWidth=1;
+  sctx.strokeRect(4,4,SW-8,SH-8);
+  sctx.fillStyle='rgba(127,227,255,.6)';sctx.font='600 12px monospace';sctx.textAlign='left';
+  sctx.fillText('LAT',10,SH-12); sctx.textAlign='right'; sctx.fillText('MED',SW-10,SH-12);
+  // depth ticks
+  sctx.textAlign='left';
+  for(let d=1;d<=3;d++){ const y=(d/3)*SH; sctx.fillText((d*2)+'cm',SW-40,y-4);
+    sctx.strokeStyle='rgba(127,227,255,.15)';sctx.beginPath();sctx.moveTo(SW-14,y);sctx.lineTo(SW-4,y);sctx.stroke();}
+
+  sonoTex.needsUpdate = true;
+}
+
+/* =========================================================
+ *  DESKTOP CONTROL RIG (preview without a headset)
+ * ========================================================= */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0,1.1,-0.05); controls.enableDamping=true; controls.update();
+
+let desktopMode=false, dProbeX=0, dNeedleAdvance=0;
+const desk = {probePos:new THREE.Vector3(0,1.14,-0.045), needleFrom:null};
+function enableDesktop(){
+  desktopMode=true;
+  scene.add(probe); scene.add(needle);
+  document.getElementById('sono').style.display='block';
+}
+const keys={};
+addEventListener('keydown',e=>{keys[e.code]=true;
+  if(e.code==='Enter'){injecting=true;}
+  if(['ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();});
+addEventListener('keyup',e=>{keys[e.code]=false; if(e.code==='Enter')injecting=false;});
+
+function driveDesktop(){
+  // probe hovers above the injection zone; ←/→ nudge it lateral/medial to "find" recess
+  if(keys['ArrowLeft']) dProbeX -= 0.0008;
+  if(keys['ArrowRight']) dProbeX += 0.0008;
+  dProbeX=THREE.MathUtils.clamp(dProbeX,-0.05,0.05);
+  probe.position.set(dProbeX,1.155,-0.045);
+  probe.rotation.set(0,0,0);            // face straight down, transverse
+
+  // needle enters from lateral (patient's +x) angling medial+down toward recess
+  if(keys['Space']) dNeedleAdvance += 0.0009;
+  if(keys['KeyR'])  dNeedleAdvance = 0;
+  dNeedleAdvance=THREE.MathUtils.clamp(dNeedleAdvance,0,0.12);
+  const start = new THREE.Vector3(0.11,1.135,-0.045);
+  const aim   = recessWorld();
+  const dir   = aim.clone().sub(start).normalize();
+  const tip   = start.clone().addScaledVector(dir,dNeedleAdvance);
+  needle.position.copy(tip);
+  needle.quaternion.setFromUnitVectors(new THREE.Vector3(1,0,0), dir);
+}
+
+/* =========================================================
+ *  BUTTONS / XR AVAILABILITY
+ * ========================================================= */
+const enterBtn=document.getElementById('enterVR');
+const deskBtn=document.getElementById('tryDesktop');
+const xrStatus=document.getElementById('xrStatus');
+
+if(navigator.xr){
+  navigator.xr.isSessionSupported('immersive-vr').then(ok=>{
+    if(ok){ xrStatus.textContent='Headset ready — tap Enter VR.';
+      enterBtn.onclick=async()=>{
+        const session=await navigator.xr.requestSession('immersive-vr',
+          {optionalFeatures:['local-floor','bounded-floor','hand-tracking']});
+        renderer.xr.setReferenceSpaceType('local-floor');
+        await renderer.xr.setSession(session);
+      };
+    } else { xrStatus.textContent='No VR headset detected here. Use browser preview, or open on Meta Quest.';
+      enterBtn.disabled=true; }
+  });
+} else { xrStatus.textContent='WebXR unavailable in this browser. Use preview, or open on Quest.';
+  enterBtn.disabled=true; }
+
+deskBtn.onclick=()=>{enableDesktop(); deskBtn.textContent='Preview active'; deskBtn.disabled=true;};
+
+/* =========================================================
+ *  MAIN LOOP
+ * ========================================================= */
+const clock=new THREE.Clock();
+renderer.setAnimationLoop(()=>{
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(desktopMode && !renderer.xr.isPresenting) driveDesktop();
+  evaluate(dt);
+  drawSono();
+
+  if(pulseT>0 && pulseObj){ pulseT-=dt;
+    const s=1+Math.sin((0.5-pulseT)*12)*0.4*Math.max(0,pulseT/0.5);
+    pulseObj.scale.setScalar(s); if(pulseT<=0)pulseObj.scale.setScalar(1);}
+  controls.update();
+  renderer.render(scene,camera);
+});
+
+addEventListener('resize', sizeRenderer);
+sizeRenderer();
+// gentle auto-start of preview so the page isn't static
+setTimeout(()=>{ if(!renderer.xr.isPresenting && !desktopMode){ enableDesktop(); deskBtn.textContent='Preview active'; deskBtn.disabled=true; } }, 400);
+</script>
+</body>
+</html>
